@@ -1,0 +1,96 @@
+name: iOS build (cloud Mac)
+
+on:
+  push:
+    branches: [cloud-ios-build]
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-15
+    timeout-minutes: 360
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          lfs: true
+
+      - name: Select Xcode
+        run: |
+          ls /Applications | grep -i xcode
+          sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer || true
+          xcodebuild -version
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build dependencies
+        run: |
+          brew install cmake git-lfs || true
+          git lfs install
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install mlc-llm (prebuilt)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --pre -U -f https://mlc.ai/wheels mlc-llm-nightly-cpu mlc-ai-nightly-cpu
+          python -c "import mlc_llm; print(mlc_llm.__version__)"
+
+      - name: Trim model list to one small model
+        run: |
+          cd ios/MLCChat
+          cp mlc-package-config.json mlc-package-config.json.bak
+          cat > mlc-package-config.json << 'JSON'
+          {
+              "device": "iphone",
+              "model_list": [
+                  {
+                      "model": "HF://mlc-ai/Qwen3-0.6B-q0f16-MLC",
+                      "model_id": "Qwen3-0.6B-q0f16",
+                      "estimated_vram_bytes": 2000000000,
+                      "overrides": {
+                          "prefill_chunk_size": 128,
+                          "context_window_size": 2048
+                      }
+                  }
+              ]
+          }
+          JSON
+          cat mlc-package-config.json
+
+      - name: Package (compile model + build runtime libs)
+        run: |
+          cd ios/MLCChat
+          export MLC_LLM_SOURCE_DIR="$GITHUB_WORKSPACE"
+          export PATH="$HOME/.cargo/bin:$PATH"
+          mlc_llm package
+        env:
+          MLC_JIT_POLICY: REDO
+
+      - name: Verify dist layout
+        run: |
+          find ios/MLCChat/dist -maxdepth 3 | head -30
+          ls -la ios/MLCChat/dist/lib/
+
+      - name: Build iOS app (unsigned validation build)
+        run: |
+          cd ios/MLCChat
+          xcodebuild \
+            -project MLCChat.xcodeproj \
+            -scheme MLCChat \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+
+      - name: Upload app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MLCChat-unsigned
+          path: ${{ runner.temp }}/DerivedData/Build/Products/Release-iphoneos/MLCChat.app
