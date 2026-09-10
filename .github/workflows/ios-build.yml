@@ -41,8 +41,12 @@ jobs:
         # macos-26 gets the current matched nightly pair (0.26.x, macosx_26_0).
         run: |
           python -m pip install --upgrade pip
+          python -m pip install --upgrade pip
           python -m pip install --pre -U -f https://mlc.ai/wheels mlc-llm-nightly-cpu mlc-ai-nightly-cpu
-          python -c "import mlc_llm; print(mlc_llm.__version__)"
+          pip show apache-tvm-ffi | head -2
+          python -c "import tvm_ffi; print('tvm_ffi import ok')"
+          python -c "import tvm; print('tvm import ok')"
+          python -c "import mlc_llm; print('mlc_llm', mlc_llm.__version__)"
           mlc_llm package --help | head -25
 
       - name: Trim model list to one small model
