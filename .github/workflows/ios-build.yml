@@ -33,6 +33,7 @@ jobs:
           cat > /tmp/pkg-config.json << 'JSON'
           {"device": "iphone", "model_list": [{"model": "HF://mlc-ai/Qwen3-0.6B-q0f16-MLC", "model_id": "Qwen3-0.6B-q0f16-MLC", "estimated_vram_bytes": 800000000}]}
           JSON
+          set -o pipefail
           python compile_iphone_model.py /tmp/pkg-config.json /tmp/iphone-output 2>&1 | tail -50
 
       - name: Upload model artifacts
