@@ -1,0 +1,29 @@
+name: test-iphone-compile
+on:
+  workflow_dispatch:
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cloud-ios-build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install mlc-llm
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --pre -f https://mlc.ai/wheels mlc-llm-nightly-cpu mlc-ai-nightly-cpu "apache-tvm-ffi==0.1.13.post3"
+          python -c "import mlc_llm; print('mlc_llm', mlc_llm.__version__)"
+      - name: Compile model for iPhone
+        run: |
+          cat > /tmp/pkg-config.json << 'JSON'
+          {"device": "iphone", "model_list": [{"model": "HF://mlc-ai/Qwen3-0.6B-q0f16-MLC", "model_id": "Qwen3-0.6B-q0f16-MLC", "estimated_vram_bytes": 800000000}]}
+          JSON
+          python compile_iphone_model.py /tmp/pkg-config.json /tmp/iphone-output 2>&1 | tail -40
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: iphone-model-libs
+          path: /tmp/iphone-output/
