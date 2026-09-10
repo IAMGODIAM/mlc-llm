@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-ios:
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 360
     steps:
       - name: Checkout
@@ -19,7 +19,7 @@ jobs:
       - name: Select Xcode
         run: |
           ls /Applications | grep -i xcode
-          sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer || true
+          sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode_26.app/Contents/Developer || true
           xcodebuild -version
 
       - name: Set up Python
@@ -34,14 +34,14 @@ jobs:
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
-      - name: Install mlc-llm (prebuilt, version-matched pair)
-        # NOTE: do NOT use -U with both packages: pip resolves mlc-llm 0.20.dev162
-        # (macosx_13_0, old layout needing @rpath/libtvm.dylib) as "newer" than
-        # 0.20.0.dev0 (macosx_15_0, new layout) and pairs it with an incompatible
-        # mlc-ai. The v0.9.dev0 release pair below is known-consistent.
+      - name: Install mlc-llm (prebuilt nightly)
+        # NOTE: on macos-15 pip resolves a broken mix (mlc-llm 0.20.dev162 macosx_13_0
+        # + mlc-ai 0.26.dev203 macosx_15_0 -> missing @rpath/libtvm.dylib), and the
+        # v0.9.dev0 macosx_15_0 pair has an ABI skew (missing tvm::ffi::json::Stringify).
+        # macos-26 gets the current matched nightly pair (0.26.x, macosx_26_0).
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --pre -f https://mlc.ai/wheels "mlc-llm-nightly-cpu==0.20.0.dev0" "mlc-ai-nightly-cpu==0.26.dev203"
+          python -m pip install --pre -U -f https://mlc.ai/wheels mlc-llm-nightly-cpu mlc-ai-nightly-cpu
           python -c "import mlc_llm; print(mlc_llm.__version__)"
           mlc_llm package --help | head -25
 
