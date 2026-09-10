@@ -31,6 +31,10 @@ jobs:
           # mlc-ai 0.26.dev246 lacks it). Needed by JIT subprocess too.
           python patch_tirx.py
 
+      - name: Test mlc_llm compile CLI
+        run: |
+          python -m mlc_llm compile --help 2>&1 | head -20
+
       - name: Compile iPhone model library
         run: |
           cat > /tmp/pkg-config.json << 'JSON'
