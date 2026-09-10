@@ -1,0 +1,110 @@
+name: iOS build (cloud Mac)
+
+on:
+  push:
+    branches: [cloud-ios-build]
+  workflow_dispatch:
+
+jobs:
+  compile-model:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout scripts
+        uses: actions/checkout@v4
+        with:
+          ref: cloud-ios-build
+          sparse-checkout: |
+            compile_iphone_model.py
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install mlc-llm (Linux wheels work)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --pre -f https://mlc.ai/wheels mlc-llm-nightly-cpu mlc-ai-nightly-cpu "apache-tvm-ffi==0.1.13.post3"
+          python -c "import mlc_llm; print('mlc_llm', mlc_llm.__version__)"
+
+      - name: Compile iPhone model library
+        run: |
+          cat > /tmp/pkg-config.json << 'JSON'
+          {"device": "iphone", "model_list": [{"model": "HF://mlc-ai/Qwen3-0.6B-q0f16-MLC", "model_id": "Qwen3-0.6B-q0f16-MLC", "estimated_vram_bytes": 800000000}]}
+          JSON
+          python compile_iphone_model.py /tmp/pkg-config.json /tmp/iphone-output 2>&1 | tail -50
+
+      - name: Upload model artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: iphone-model
+          path: /tmp/iphone-output/
+
+  build-ios:
+    runs-on: macos-26
+    timeout-minutes: 360
+    needs: compile-model
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: cloud-ios-build
+          submodules: recursive
+          lfs: true
+
+      - name: Select Xcode
+        run: |
+          ls /Applications | grep -i xcode
+          sudo xcode-select -s /Applications/Xcode_26.app/Contents/Developer || true
+          xcodebuild -version
+
+      - name: Download model artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: iphone-model
+          path: /tmp/iphone-output
+
+      - name: Inspect model artifacts
+        run: |
+          find /tmp/iphone-output -type f | head -20
+          ls -lh /tmp/iphone-output/lib/ /tmp/iphone-output/bundle/
+
+      - name: Set up Python (for prepare_libs helpers only)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build dependencies
+        run: |
+          brew install cmake git-lfs rust 2>/dev/null || true
+          git lfs install || true
+
+      - name: Build iOS runtime libs
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          bash ios/prepare_libs.sh
+          ls -lh build/lib/
+
+      - name: Assemble output libs
+        run: |
+          mkdir -p /tmp/package-output/lib /tmp/package-output/bundle
+          cp /tmp/iphone-output/lib/libmodel_iphone.a /tmp/package-output/lib/
+          cp /tmp/iphone-output/bundle/mlc-app-config.json /tmp/package-output/bundle/
+          cp build/lib/*.a /tmp/package-output/lib/
+          ls -lh /tmp/package-output/lib/
+
+      - name: Build unsigned iOS app
+        run: |
+          cd ios/MLCChat
+          xcodebuild -project MLCChat.xcodeproj -scheme MLCChat \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            -derivedDataPath /tmp/derived-data 2>&1 | tail -30
+          find /tmp/derived-data -name "MLCChat.app" -type d | head -3
+
+      - name: Upload unsigned app
+        uses: actions/upload-artifact@v4
+        with:
+          name: MLCChat-unsigned
+          path: /tmp/derived-data/Build/Products/Release-iphoneos/MLCChat.app
