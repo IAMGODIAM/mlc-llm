@@ -46,7 +46,20 @@ jobs:
           # inside `import tvm` (native ABI mismatch with the nightly tvm libs).
           python -m pip install --pre -f https://mlc.ai/wheels mlc-llm-nightly-cpu mlc-ai-nightly-cpu "apache-tvm-ffi==0.1.13.post3"
           pip show apache-tvm-ffi | head -2
-          python -c "import tvm; print('tvm import ok')"
+          python -u -c "
+import tvm_ffi; print('1 tvm_ffi ok', flush=True)
+import tvm.libinfo; print('2 tvm.libinfo ok', flush=True)
+import tvm.base; print('3 tvm.base ok', flush=True)
+import tvm.runtime; print('4 tvm.runtime ok', flush=True)
+import tvm.error; print('5 tvm.error ok', flush=True)
+import tvm.ir; print('6 tvm.ir ok', flush=True)
+import tvm.script; print('7 tvm.script ok', flush=True)
+import tvm.target; print('8 tvm.target ok', flush=True)
+import tvm.te; print('9 tvm.te ok', flush=True)
+import tvm.driver; print('10 tvm.driver ok', flush=True)
+import tvm.relax; print('11 tvm.relax ok', flush=True)
+import tvm; print('12 tvm full ok', flush=True)
+" 2>&1 | tail -15 || echo "BISECT ABORTED"
           # The nightly's desktop native lib (libmlc_llm_module.dylib) aborts on
           # dlopen (SIGABRT); `mlc_llm package` only needs the TVM compiler +
           # Python orchestration, so skip loading the native lib.
