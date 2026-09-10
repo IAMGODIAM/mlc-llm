@@ -27,6 +27,9 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install --pre -f https://mlc.ai/wheels mlc-llm-nightly-cpu mlc-ai-nightly-cpu "apache-tvm-ffi==0.1.13.post3" psutil
           python -c "import mlc_llm; print('mlc_llm', mlc_llm.__version__)"
+          # Patch missing tvm.tirx.is_buffer_var (mlc_llm 0.26.dev6 expects it,
+          # mlc-ai 0.26.dev246 lacks it). Needed by JIT subprocess too.
+          python patch_tirx.py
 
       - name: Compile iPhone model library
         run: |
