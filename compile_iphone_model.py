@@ -6,12 +6,11 @@ from pathlib import Path
 # Compat shim: mlc_llm 0.26.dev6 expects tvm.tirx.is_buffer_var, which is missing
 # from mlc-ai 0.26.dev246. Implement it based on usage in mlc_llm.
 import tvm.tirx as tirx
-import tvm.tir
 
 def _is_buffer_var(param):
     """Check if a PrimFunc param is a buffer (vs a scalar var)."""
-    # In tirx, buffer params are tir.Buffer objects; scalar params are tir.Var
-    return isinstance(param, tvm.tir.Buffer)
+    # In tirx, buffer params are tirx.Buffer objects; scalar params are tirx.Var
+    return isinstance(param, tirx.Buffer)
 
 if not hasattr(tirx, 'is_buffer_var'):
     tirx.is_buffer_var = _is_buffer_var
