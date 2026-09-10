@@ -42,7 +42,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install --upgrade pip
-          python -m pip install --pre -U -f https://mlc.ai/wheels mlc-llm-nightly-cpu mlc-ai-nightly-cpu
+          # Pin apache-tvm-ffi to latest STABLE: --pre pulls 0.1.14rc4 which aborts
+          # inside `import tvm` (native ABI mismatch with the nightly tvm libs).
+          python -m pip install --pre -f https://mlc.ai/wheels mlc-llm-nightly-cpu mlc-ai-nightly-cpu "apache-tvm-ffi==0.1.13.post3"
           pip show apache-tvm-ffi | head -2
           python -c "import tvm; print('tvm import ok')"
           # The nightly's desktop native lib (libmlc_llm_module.dylib) aborts on
