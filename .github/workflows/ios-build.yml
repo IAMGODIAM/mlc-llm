@@ -45,9 +45,26 @@ jobs:
           python -m pip install --pre -U -f https://mlc.ai/wheels mlc-llm-nightly-cpu mlc-ai-nightly-cpu
           pip show apache-tvm-ffi | head -2
           python -c "import tvm_ffi; print('tvm_ffi import ok')"
-          python -c "import tvm; print('tvm import ok')"
-          python -c "import mlc_llm; print('mlc_llm', mlc_llm.__version__)"
-          mlc_llm package --help | head -25
+          DYLD_PRINT_LIBRARIES=1 python -c "import tvm; print('tvm import ok')" 2>&1 | tail -8 || echo "tvm import aborted"
+          python -c "import mlc_llm; print('mlc_llm', mlc_llm.__version__)" || echo "mlc_llm import failed"
+          mlc_llm package --help | head -25 || echo "package --help failed"
+
+      - name: Dump macOS crash reports
+        if: always()
+        run: |
+          ls -lt ~/Library/Logs/DiagnosticReports/ 2>/dev/null | head -5 || echo "no DiagnosticReports"
+          for f in $(ls -t ~/Library/Logs/DiagnosticReports/*.ips 2>/dev/null | head -2); do
+            echo "===== $f"
+            python3 - "$f" << 'EOF'
+          import json, sys
+          d = json.load(open(sys.argv[1]))
+          print("exception:", json.dumps(d.get("exception", {}))[:500])
+          for t in d.get("threads", []):
+              if t.get("triggered"):
+                  frames = [fr.get("symbol", fr.get("imageOffset", "?")) for fr in t.get("frames", [])[:12]]
+                  print("crashed thread frames:", frames)
+          EOF
+          done
 
       - name: Trim model list to one small model
         run: |
