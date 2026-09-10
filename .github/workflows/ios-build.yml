@@ -31,10 +31,15 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          brew install cmake git-lfs rust 2>/dev/null || true
+          brew install cmake git-lfs 2>/dev/null || true
           git lfs install || true
+          # Install rustup (not brew rust) for iOS target support
+          if ! command -v rustup >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          fi
           export PATH="$HOME/.cargo/bin:$PATH"
-          rustc --version || true
+          rustup --version
+          rustc --version
 
       - name: Build iOS runtime libs
         run: |
