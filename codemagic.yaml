@@ -29,53 +29,23 @@ workflows:
       - name: Set up keychain for code signing
         script: |
           keychain initialize
+      - name: Generate distribution signing key
+        script: |
+          openssl genrsa -out dist-signing.key 2048
+          echo "signing key ready"
       - name: Register bundle ID if missing
         script: |
           app-store-connect bundle-ids create "$BUNDLE_ID" --name "MLCChat" || echo "Bundle ID already registered"
-      - name: ASC diag 1 - pyjwt import
-        script: |
-          python3 -m pip install --quiet "pyjwt[crypto]" || true
-          python3 -c "import jwt; print('pyjwt import ok')"
-      - name: ASC diag 2 - mint JWT
-        script: |
-          python3 - <<'PYEOF'
-          import os, time
-          import jwt
-          key_id = os.environ["APP_STORE_CONNECT_KEY_IDENTIFIER"]
-          issuer_id = os.environ["APP_STORE_CONNECT_ISSUER_ID"]
-          priv = os.environ["APP_STORE_CONNECT_PRIVATE_KEY"]
-          token = jwt.encode(
-              {"iss": issuer_id, "exp": int(time.time()) + 1200, "aud": "appstoreconnect-v1"},
-              priv, algorithm="ES256", headers={"kid": key_id})
-          print("minted token chars:", len(token))
-          PYEOF
-      - name: ASC diag 3 - API read
-        script: |
-          python3 - <<'PYEOF'
-          import os, time, json, urllib.request, urllib.parse, urllib.error
-          import jwt
-          key_id = os.environ["APP_STORE_CONNECT_KEY_IDENTIFIER"]
-          issuer_id = os.environ["APP_STORE_CONNECT_ISSUER_ID"]
-          priv = os.environ["APP_STORE_CONNECT_PRIVATE_KEY"]
-          token = jwt.encode(
-              {"iss": issuer_id, "exp": int(time.time()) + 1200, "aud": "appstoreconnect-v1"},
-              priv, algorithm="ES256", headers={"kid": key_id})
-          req = urllib.request.Request(
-              "https://api.appstoreconnect.apple.com/v1/apps?filter%5BbundleId%5D=com.e5enclave.mlcchat")
-          req.add_header("Authorization", "Bearer " + token)
-          try:
-              with urllib.request.urlopen(req, timeout=60) as r:
-                  body = json.loads(r.read().decode() or "{}")
-              print("API read status:", r.status, "apps found:", len(body.get("data", [])))
-          except urllib.error.HTTPError as e:
-              print("API read HTTPError:", e.code)
-              raise SystemExit(1)
-          PYEOF
       - name: Ensure App Store Connect app record
         script: |
+          python3 -m pip install --quiet "pyjwt[crypto]" || true
           python3 - <<'PYEOF'
           import os, time, json, urllib.request, urllib.parse, urllib.error
           import jwt
+          for v in ["APP_STORE_CONNECT_KEY_IDENTIFIER",
+                    "APP_STORE_CONNECT_ISSUER_ID",
+                    "APP_STORE_CONNECT_PRIVATE_KEY"]:
+              assert v in os.environ and os.environ[v], "missing env var: %s" % v
           key_id = os.environ["APP_STORE_CONNECT_KEY_IDENTIFIER"]
           issuer_id = os.environ["APP_STORE_CONNECT_ISSUER_ID"]
           priv = os.environ["APP_STORE_CONNECT_PRIVATE_KEY"]
@@ -117,7 +87,7 @@ workflows:
         script: |
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
-            --certificate-key=@env:CERTIFICATE_PRIVATE_KEY \
+            --certificate-key=@file:dist-signing.key \
             --create
       - name: Set up signing certificate
         script: |
