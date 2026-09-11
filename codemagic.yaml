@@ -1,0 +1,67 @@
+workflows:
+  mlcchat-testflight:
+    name: MLCChat TestFlight
+    instance_type: mac_mini_m2
+    max_build_duration: 240
+    environment:
+      groups:
+        - appstore_credentials
+      vars:
+        BUNDLE_ID: com.e5enclave.mlcchat
+        XCODE_PROJECT: ios/MLCChat/MLCChat.xcodeproj
+        XCODE_SCHEME: MLCChat
+      xcode: latest
+    scripts:
+      - name: Init submodules and LFS
+        script: |
+          git submodule update --init --recursive
+          git lfs install
+          git lfs pull
+      - name: Install build dependencies
+        script: |
+          if ! command -v cmake >/dev/null 2>&1; then brew install cmake; fi
+          if ! command -v git-lfs >/dev/null 2>&1; then brew install git-lfs; fi
+          if ! command -v rustup >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          fi
+          export PATH="$HOME/.cargo/bin:$PATH"
+          rustup --version
+      - name: Build iOS runtime libs
+        script: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          bash ios/prepare_libs.sh
+          ls -lh build/lib/
+      - name: Verify bundle ID
+        script: |
+          grep "PRODUCT_BUNDLE_IDENTIFIER" ios/MLCChat/MLCChat.xcodeproj/project.pbxproj
+      - name: Set up keychain for code signing
+        script: |
+          keychain initialize
+      - name: Register bundle ID if missing
+        script: |
+          app-store-connect bundle-ids create "$BUNDLE_ID" --name "MLCChat" || echo "Bundle ID already registered"
+      - name: Fetch signing files (creates App Store profile if missing)
+        script: |
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --certificate-key=@env:CERTIFICATE_PRIVATE_KEY \
+            --create
+      - name: Set up signing certificate
+        script: |
+          keychain add-certificates
+      - name: Apply provisioning profiles to Xcode project
+        script: |
+          xcode-project use-profiles
+      - name: Build signed IPA
+        script: |
+          xcode-project build-ipa \
+            --project "$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
+    publishing:
+      app_store_connect:
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        submit_to_testflight: true
