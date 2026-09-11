@@ -34,7 +34,7 @@ workflows:
           app-store-connect bundle-ids create "$BUNDLE_ID" --name "MLCChat" || echo "Bundle ID already registered"
       - name: Ensure App Store Connect app record
         script: |
-          pip3 install --quiet "pyjwt[crypto]" 2>&1 | tail -1
+          python3 -m pip install --quiet "pyjwt[crypto]" || echo "pip install failed, continuing"
           python3 - <<'PYEOF'
           import os, time, json, urllib.request, urllib.parse, urllib.error
           import jwt
@@ -121,7 +121,7 @@ workflows:
     scripts:
       - name: Export compliance and beta group
         script: |
-          pip3 install --quiet "pyjwt[crypto]" 2>&1 | tail -1
+          python3 -m pip install --quiet "pyjwt[crypto]" || echo "pip install failed, continuing"
           python3 - <<'PYEOF'
           import os, time, json, urllib.request, urllib.parse, urllib.error
           import jwt
