@@ -32,9 +32,47 @@ workflows:
       - name: Register bundle ID if missing
         script: |
           app-store-connect bundle-ids create "$BUNDLE_ID" --name "MLCChat" || echo "Bundle ID already registered"
+      - name: ASC diag 1 - pyjwt import
+        script: |
+          python3 -m pip install --quiet "pyjwt[crypto]" || true
+          python3 -c "import jwt; print('pyjwt import ok')"
+      - name: ASC diag 2 - mint JWT
+        script: |
+          python3 - <<'PYEOF'
+          import os, time
+          import jwt
+          key_id = os.environ["APP_STORE_CONNECT_KEY_IDENTIFIER"]
+          issuer_id = os.environ["APP_STORE_CONNECT_ISSUER_ID"]
+          priv = os.environ["APP_STORE_CONNECT_PRIVATE_KEY"]
+          token = jwt.encode(
+              {"iss": issuer_id, "exp": int(time.time()) + 1200, "aud": "appstoreconnect-v1"},
+              priv, algorithm="ES256", headers={"kid": key_id})
+          print("minted token chars:", len(token))
+          PYEOF
+      - name: ASC diag 3 - API read
+        script: |
+          python3 - <<'PYEOF'
+          import os, time, json, urllib.request, urllib.parse, urllib.error
+          import jwt
+          key_id = os.environ["APP_STORE_CONNECT_KEY_IDENTIFIER"]
+          issuer_id = os.environ["APP_STORE_CONNECT_ISSUER_ID"]
+          priv = os.environ["APP_STORE_CONNECT_PRIVATE_KEY"]
+          token = jwt.encode(
+              {"iss": issuer_id, "exp": int(time.time()) + 1200, "aud": "appstoreconnect-v1"},
+              priv, algorithm="ES256", headers={"kid": key_id})
+          req = urllib.request.Request(
+              "https://api.appstoreconnect.apple.com/v1/apps?filter%5BbundleId%5D=com.e5enclave.mlcchat")
+          req.add_header("Authorization", "Bearer " + token)
+          try:
+              with urllib.request.urlopen(req, timeout=60) as r:
+                  body = json.loads(r.read().decode() or "{}")
+              print("API read status:", r.status, "apps found:", len(body.get("data", [])))
+          except urllib.error.HTTPError as e:
+              print("API read HTTPError:", e.code)
+              raise SystemExit(1)
+          PYEOF
       - name: Ensure App Store Connect app record
         script: |
-          python3 -m pip install --quiet "pyjwt[crypto]" || echo "pip install failed, continuing"
           python3 - <<'PYEOF'
           import os, time, json, urllib.request, urllib.parse, urllib.error
           import jwt
@@ -58,22 +96,22 @@ workflows:
                   with urllib.request.urlopen(req, timeout=60) as r:
                       return r.status, json.loads(r.read().decode() or "{}")
               except urllib.error.HTTPError as e:
-                  return e.code, e.read().decode()[:800]
+                  return e.code, e.read().decode()[:300]
           s, apps = call("GET", "/v1/apps", {"filter[bundleId]": BUNDLE})
-          assert s == 200, "apps lookup failed: %s %s" % (s, apps)
+          assert s == 200, "apps lookup failed: %s" % s
           if apps.get("data"):
               print("app record exists:", apps["data"][0]["id"])
           else:
               s, bids = call("GET", "/v1/bundleIds", {"filter[identifier]": BUNDLE})
-              assert s == 200 and bids.get("data"), "bundleId lookup failed: %s %s" % (s, bids)
+              assert s == 200 and bids.get("data"), "bundleId lookup failed: %s" % s
               bid = bids["data"][0]["id"]
               payload = {"data": {"type": "apps",
                   "attributes": {"bundleId": BUNDLE, "name": "MLCChat",
                                  "primaryLocale": "en-US", "sku": "mlcchat-001"},
                   "relationships": {"bundleId": {"data": {"type": "bundleIds", "id": bid}}}}}
               s, res = call("POST", "/v1/apps", data=payload)
-              assert s in (200, 201), "app create failed: %s %s" % (s, res)
-              print("app record created:", res["data"]["id"])
+              assert s in (200, 201), "app create failed: %s" % s
+              print("app record created")
           PYEOF
       - name: Fetch signing files (creates App Store profile if missing)
         script: |
